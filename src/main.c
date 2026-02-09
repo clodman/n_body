@@ -25,16 +25,17 @@ constexpr double PHYS_DT = 1. / 120;
 constexpr double SIM_SPEED = 2000.0;
 
 typedef struct {
-    double mass[BALLS_NUMBER];
-    double radius[BALLS_NUMBER];
-    Vec2 position[BALLS_NUMBER];
-    Vec2 velocity[BALLS_NUMBER];
-    Vec2 acceleration[BALLS_NUMBER];
+    double masses[BALLS_NUMBER];
+    double radiuses[BALLS_NUMBER];
+    Vec2 positions[BALLS_NUMBER];
+    Vec2 velocities[BALLS_NUMBER];
+    Vec2 accelerations[BALLS_NUMBER];
 } Balls;
 
 Vec2 screen_coordinates(Vec2 central_coordinates);
 Balls balls_init();
-void balls_accelerate(Balls *balls);
+void balls_interact(Balls *balls);
+Vec2 ball_accelerate(Vec2 vec_IJ, double mass_of_j);
 void balls_move(Balls *balls);
 void balls_draw(Balls *balls);
 
@@ -55,7 +56,7 @@ int main(void) {
         acumulator += GetFrameTime() * SIM_SPEED;
         acumulator = MIN(acumulator, MAX_ACUMULATOR);
         while (acumulator >= PHYS_DT) {
-            balls_accelerate(&balls);
+            balls_interact(&balls);
             balls_move(&balls);
             acumulator -= PHYS_DT;
         }
@@ -86,51 +87,59 @@ inline Vec2 screen_coordinates(Vec2 central_coordinates) {
 
 Balls balls_init() {
     return (Balls){
-        .mass = {10, 30, 50},
-        .radius = {10, 30, 50},
-        .position = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
-        .velocity = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){0, 0}}};
+        .masses = {10, 30, 50},
+        .radiuses = {10, 30, 50},
+        .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
+        .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){0, 1}}};
 }
 
-void balls_accelerate(Balls *balls) {
-    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        balls->acceleration[i].x = 0.0;
-        balls->acceleration[i].y = 0.0;
-    }
+void balls_interact(Balls *balls) {
     for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Vec2 r = {.x = balls->position[j].x - balls->position[i].x,
-                      .y = balls->position[j].y - balls->position[i].y};
-            double r_size = sqrt(r.x * r.x + r.y * r.y);
-            double M = balls->mass[j];
-            double m = balls->mass[i];
-            balls->acceleration[i].x +=
-                G * M / (r_size * r_size * r_size) * r.x;
-            balls->acceleration[i].y +=
-                G * M / (r_size * r_size * r_size) * r.y;
+            Vec2 vec_IJ = {.x = balls->positions[j].x - balls->positions[i].x,
+                           .y = balls->positions[j].y - balls->positions[i].y};
+            balls->accelerations[i] = ball_accelerate(vec_IJ, balls->masses[j]);
+            balls->accelerations[j] = SCALAR_MULT(balls->accelerations[i], -balls->masses[i]/balls->masses[j]);
+        }
+    }
+}
 
-            balls->acceleration[j].x +=
-                -G * m / (r_size * r_size * r_size) * r.x;
-            balls->acceleration[j].y +=
-                -G * m / (r_size * r_size * r_size) * r.y;
+Vec2 ball_accelerate(Vec2 vec_IJ, double mass_of_j) {
+    double r_size = sqrt(vec_IJ.x * vec_IJ.x + vec_IJ.y * vec_IJ.y);
+    Vec2 acceleration_i =
+        (Vec2){G * mass_of_j / (r_size * r_size * r_size) * vec_IJ.x,
+               G * mass_of_j / (r_size * r_size * r_size) * vec_IJ.y};
+    return acceleration_i;
+}
+
+void balls_collide(Balls *balls) {
+    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
+        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+            Vec2 r = {.x = balls->positions[j].x - balls->positions[i].x,
+                      .y = balls->positions[j].y - balls->positions[i].y};
+            double r_size = sqrt(r.x * r.x + r.y * r.y);
+            if (r_size <= balls->radiuses[i] + balls->radiuses[j]) {
+                // reflect??
+                // reuse??
+            }
         }
     }
 }
 
 void balls_move(Balls *balls) {
     for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        balls->velocity[i].x += balls->acceleration[i].x * PHYS_DT;
-        balls->velocity[i].y += balls->acceleration[i].y * PHYS_DT;
+        balls->velocities[i].x += balls->accelerations[i].x * PHYS_DT;
+        balls->velocities[i].y += balls->accelerations[i].y * PHYS_DT;
 
-        balls->position[i].x += balls->velocity[i].x * PHYS_DT;
-        balls->position[i].y += balls->velocity[i].y * PHYS_DT;
+        balls->positions[i].x += balls->velocities[i].x * PHYS_DT;
+        balls->positions[i].y += balls->velocities[i].y * PHYS_DT;
     }
 }
 
 void balls_draw(Balls *balls) {
     for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        Vec2 screen_p = screen_coordinates(balls->position[i]);
-        double r = balls->radius[i];
+        Vec2 screen_p = screen_coordinates(balls->positions[i]);
+        double r = balls->radiuses[i];
         DrawCircle(screen_p.x, screen_p.y, r, LIGHTGRAY);
     }
 }
