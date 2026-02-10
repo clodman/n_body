@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <math.h>
 
 typedef int8_t i8;
 typedef int16_t i16;
@@ -13,7 +14,7 @@ typedef uint64_t u64;
 #define MAX(a, b) (((a) > (b) ? (a) : (b)))
 #define CLAMP(a, b, c) (((b) > (c) ? (c) : (((b) < (a)) ? (a) : (b))))
 #define SCALAR_MULT_COPY(v, a)                                                 \
-    (Vec2) { v.x *a, v.y *a }
+    (Vec2) { v.x * a, v.y * a }
 #define SCALAR_MULT(v, a)                                                      \
     v.x *= a;                                                                  \
     v.y *= a;
@@ -22,6 +23,7 @@ typedef uint64_t u64;
 #define VECTOR_ADD_ONTO(v, v2)                                                 \
     v.x += v2.x;                                                               \
     v.y += v2.y
+#define VECTOR_NORM(v) (double)sqrt(v.x * v.x + v.y * v.y);
 
 typedef double Matrix4[16];
 typedef double Matrix3[9];

@@ -4,11 +4,10 @@
 #include <stdlib.h>
 
 #include "base.c"
-// autogen balls
-// Shoks inelastic
 // fusions
 // scale
 // trajectories
+// autogen balls
 // RK 4
 // assert
 // drag and drop
@@ -94,6 +93,15 @@ Balls balls_init() {
         .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
         .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){1, 1}}};
 }
+void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
+    Vec2 v1_factor = SCALAR_MULT_COPY(balls->velocities[i], balls->masses[i]);
+    Vec2 v2_factor = SCALAR_MULT_COPY(balls->velocities[j], balls->masses[j]);
+    Vec2 v3 = VECTOR_ADD_COPY(v1_factor, v2_factor);
+    // how tf do i prevent them from drifting together after 1 billion shocs
+    SCALAR_MULT(v3, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+    balls->velocities[i] = v3;
+    balls->velocities[j] = v3;
+}
 
 void balls_collide_elastic(Balls *balls, u32 i, u32 j) {
     // parentheses or crash???
@@ -117,12 +125,16 @@ void balls_interact(Balls *balls) {
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
             Vec2 vec_IJ = {.x = balls->positions[j].x - balls->positions[i].x,
                            .y = balls->positions[j].y - balls->positions[i].y};
-
             double r_size = sqrt(vec_IJ.x * vec_IJ.x + vec_IJ.y * vec_IJ.y);
+
             if (r_size <= balls->radiuses[i] + balls->radiuses[j]) {
-                balls_collide_elastic(balls, i, j);
+                Vec2 rel_velocity = {.x = balls->velocities[j].x - balls->velocities[i].x,
+                           .y = balls->velocities[j].y - balls->velocities[i].y};
+                // why does it have to be on a separate line??
+                double vsize = VECTOR_NORM(rel_velocity);
+                // is this check even physically sensible??
+                vsize >= 1  ? balls_collide_elastic(balls, i, j) : balls_collide_inelastic(balls,i, j);
                 balls->positions[j] = VECTOR_ADD_COPY(balls->positions[i], SCALAR_MULT_COPY(vec_IJ, (balls->radiuses[i]+balls->radiuses[j]+0.1) / r_size));
-                //clamp
             }
 
             balls->accelerations[i] = (Vec2){
