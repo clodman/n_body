@@ -35,6 +35,7 @@ typedef struct {
 
 Vec2 screen_coordinates(Vec2 central_coordinates);
 Balls balls_init();
+void balls_collide_inelastic(Balls *balls, u32 i, u32 j);
 void balls_collide_elastic(Balls *balls, u32 i, u32 j);
 void balls_interact(Balls *balls);
 void balls_move(Balls *balls);
@@ -93,6 +94,7 @@ Balls balls_init() {
         .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
         .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){1, 1}}};
 }
+
 void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
     Vec2 v1_factor = SCALAR_MULT_COPY(balls->velocities[i], balls->masses[i]);
     Vec2 v2_factor = SCALAR_MULT_COPY(balls->velocities[j], balls->masses[j]);
