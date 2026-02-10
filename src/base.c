@@ -12,7 +12,16 @@ typedef uint64_t u64;
 #define MIN(a, b) (((a) < (b) ? (a) : (b)))
 #define MAX(a, b) (((a) > (b) ? (a) : (b)))
 #define CLAMP(a, b, c) (((b) > (c) ? (c) : (((b) < (a)) ? (a) : (b))))
-#define SCALAR_MULT(v, a) (Vec2){v.x*a, v.y*a}
+#define SCALAR_MULT_COPY(v, a)                                                 \
+    (Vec2) { v.x *a, v.y *a }
+#define SCALAR_MULT(v, a)                                                      \
+    v.x *= a;                                                                  \
+    v.y *= a;
+#define VECTOR_ADD_COPY(v, v2)                                                 \
+    (Vec2) { v.x + v2.x, v.y + v2.y }
+#define VECTOR_ADD_ONTO(v, v2)                                                 \
+    v.x += v2.x;                                                               \
+    v.y += v2.y
 
 typedef double Matrix4[16];
 typedef double Matrix3[9];
@@ -29,7 +38,6 @@ typedef struct {
     double y;
     double z;
 } Vec3;
-
 
 typedef struct {
     double x;

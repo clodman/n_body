@@ -1,10 +1,11 @@
 #include "raylib.h"
 #include <assert.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "base.c"
-// Coordinates normalized
-// Shoks
+// autogen balls
+// Shoks inelastic
 // fusions
 // scale
 // trajectories
@@ -23,6 +24,7 @@ constexpr double G = 6.674 * 10;
 constexpr double MAX_ACUMULATOR = 0.25;
 constexpr double PHYS_DT = 1. / 120;
 constexpr double SIM_SPEED = 2000.0;
+constexpr double RESTITUTION = 0.8;
 
 typedef struct {
     double masses[BALLS_NUMBER];
@@ -34,8 +36,8 @@ typedef struct {
 
 Vec2 screen_coordinates(Vec2 central_coordinates);
 Balls balls_init();
+void balls_collide_elastic(Balls *balls, u32 i, u32 j);
 void balls_interact(Balls *balls);
-Vec2 ball_accelerate(Vec2 vec_IJ, double mass_of_j);
 void balls_move(Balls *balls);
 void balls_draw(Balls *balls);
 
@@ -90,7 +92,24 @@ Balls balls_init() {
         .masses = {10, 30, 50},
         .radiuses = {10, 30, 50},
         .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
-        .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){0, 1}}};
+        .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){1, 1}}};
+}
+
+void balls_collide_elastic(Balls *balls, u32 i, u32 j) {
+    // parentheses or crash???
+    Vec2 v1_factor = SCALAR_MULT_COPY(balls->velocities[i],
+                                   (balls->masses[i] - balls->masses[j]));
+    Vec2 v2_factor = SCALAR_MULT_COPY(balls->velocities[j], 2 * balls->masses[j]);
+    Vec2 v1 = VECTOR_ADD_COPY(v1_factor, v2_factor);
+    SCALAR_MULT(v1, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+
+    v2_factor = SCALAR_MULT_COPY(balls->velocities[j],
+                                   (balls->masses[j] - balls->masses[i]));
+    v1_factor = SCALAR_MULT_COPY(balls->velocities[i], 2 * balls->masses[i]);
+    Vec2 v2 = VECTOR_ADD_COPY(v2_factor, v1_factor);
+    SCALAR_MULT(v2, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+    balls->velocities[i] = v1;
+    balls->velocities[j] = v2;
 }
 
 void balls_interact(Balls *balls) {
@@ -98,30 +117,21 @@ void balls_interact(Balls *balls) {
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
             Vec2 vec_IJ = {.x = balls->positions[j].x - balls->positions[i].x,
                            .y = balls->positions[j].y - balls->positions[i].y};
-            balls->accelerations[i] = ball_accelerate(vec_IJ, balls->masses[j]);
-            balls->accelerations[j] = SCALAR_MULT(balls->accelerations[i], -balls->masses[i]/balls->masses[j]);
-        }
-    }
-}
 
-Vec2 ball_accelerate(Vec2 vec_IJ, double mass_of_j) {
-    double r_size = sqrt(vec_IJ.x * vec_IJ.x + vec_IJ.y * vec_IJ.y);
-    Vec2 acceleration_i =
-        (Vec2){G * mass_of_j / (r_size * r_size * r_size) * vec_IJ.x,
-               G * mass_of_j / (r_size * r_size * r_size) * vec_IJ.y};
-    return acceleration_i;
-}
-
-void balls_collide(Balls *balls) {
-    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Vec2 r = {.x = balls->positions[j].x - balls->positions[i].x,
-                      .y = balls->positions[j].y - balls->positions[i].y};
-            double r_size = sqrt(r.x * r.x + r.y * r.y);
+            double r_size = sqrt(vec_IJ.x * vec_IJ.x + vec_IJ.y * vec_IJ.y);
             if (r_size <= balls->radiuses[i] + balls->radiuses[j]) {
-                // reflect??
-                // reuse??
+                balls_collide_elastic(balls, i, j);
+                balls->positions[j] = VECTOR_ADD_COPY(balls->positions[i], SCALAR_MULT_COPY(vec_IJ, (balls->radiuses[i]+balls->radiuses[j]+0.1) / r_size));
+                //clamp
             }
+
+            balls->accelerations[i] = (Vec2){
+                G * balls->masses[j] / (r_size * r_size * r_size) * vec_IJ.x,
+                G * balls->masses[j] / (r_size * r_size * r_size) * vec_IJ.y};
+
+            balls->accelerations[j] = (Vec2){
+                -G * balls->masses[i] / (r_size * r_size * r_size) * vec_IJ.x,
+                -G * balls->masses[i] / (r_size * r_size * r_size) * vec_IJ.y};
         }
     }
 }
