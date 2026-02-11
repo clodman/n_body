@@ -24,17 +24,29 @@ constexpr double MAX_ACUMULATOR = 0.25;
 constexpr double PHYS_DT = 1. / 120;
 constexpr double SIM_SPEED = 2000.0;
 constexpr double RESTITUTION = 0.8;
+constexpr double COLLISION_ENERGY_THRESHOLD =
+    50.0; // Kinetic energy threshold for elastic vs inelastic
 
 typedef struct {
-    double masses[BALLS_NUMBER];
-    double radiuses[BALLS_NUMBER];
     Vec2 positions[BALLS_NUMBER];
     Vec2 velocities[BALLS_NUMBER];
     Vec2 accelerations[BALLS_NUMBER];
+    double masses[BALLS_NUMBER];
+    double radiuses[BALLS_NUMBER];
 } Balls;
+
+typedef struct {
+    Vec2 position;
+    Vec2 velocity;
+    Vec2 acceleration;
+    double mass;
+    double radius;
+} Ball;
 
 Vec2 screen_coordinates(Vec2 central_coordinates);
 Balls balls_init();
+Ball ball_init_from_index(const Balls balls[static 1], u32 i);
+void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i);
 void balls_collide_inelastic(Balls *balls, u32 i, u32 j);
 void balls_collide_elastic(Balls *balls, u32 i, u32 j);
 void balls_interact(Balls *balls);
@@ -43,6 +55,8 @@ void balls_draw(Balls *balls);
 
 struct Window window = {.width = 800, .height = 600};
 int main(void) {
+    assert(BALLS_NUMBER <= 0xFFFFFFFF &&
+           "indexes are u32, so any more will overflow");
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(window.width, window.height, "N-body??");
     SetTargetFPS(TARGET_FPS);
@@ -92,61 +106,113 @@ Balls balls_init() {
         .masses = {10, 30, 50},
         .radiuses = {10, 30, 50},
         .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
-        .velocities = {(Vec2){1, 0}, (Vec2){-0.5, 0}, (Vec2){1, 1}}};
+        .velocities = {(Vec2){2, 0}, (Vec2){-0.5, 1}, (Vec2){1, 1}}};
 }
 
+inline Ball ball_init_from_index(const Balls balls[static 1], u32 i) {
+    assert(balls != NULL && "ball_init_from_index needs ball to be not null");
+    return (Ball){
+        .position = balls->positions[i],
+        .velocity = balls->velocities[i],
+        .acceleration = balls->accelerations[i],
+        .mass = balls->masses[i],
+        .radius = balls->radiuses[i],
+    };
+}
+
+inline void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i) {
+    assert(balls != NULL && "store_ball_into_index needs ball to be not null");
+         balls->positions[i] = ball.position;
+         balls->velocities[i] = ball.velocity;
+         balls->accelerations[i] = ball.acceleration;
+         balls->masses[i] = ball.mass;
+         balls->radiuses[i] = ball.radius;
+}
+
+// TODO: Implement or remove this stub function
+// Fusion should: combine masses, compute new velocity from momentum
+// conservation, remove one ball, adjust BALLS_NUMBER (requires dynamic
+// allocation)
+void balls_fuse(Balls *balls, u32 i, u32 j) {
+    // bruuuh
+}
+
+// Perfectly inelastic collision - conserves momentum, both objects move
+// together
 void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
-    Vec2 v1_factor = SCALAR_MULT_COPY(balls->velocities[i], balls->masses[i]);
-    Vec2 v2_factor = SCALAR_MULT_COPY(balls->velocities[j], balls->masses[j]);
-    Vec2 v3 = VECTOR_ADD_COPY(v1_factor, v2_factor);
-    // how tf do i prevent them from drifting together after 1 billion shocs
-    SCALAR_MULT(v3, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+    Vec2 v1_factor = vec2_scale(balls->velocities[i], balls->masses[i]);
+    Vec2 v2_factor = vec2_scale(balls->velocities[j], balls->masses[j]);
+    Vec2 v3 = vec2_add(v1_factor, v2_factor);
+    vec2_scale_inplace(&v3, 1. / (balls->masses[i] + balls->masses[j]));
     balls->velocities[i] = v3;
     balls->velocities[j] = v3;
 }
 
+// TODO: Elastic collision formula is CORRECT
+// Uses standard 1D elastic collision equations with coefficient of restitution
+// Formula: v1' = ((m1-m2)*v1 + 2*m2*v2) * e / (m1+m2)
+//          v2' = ((m2-m1)*v2 + 2*m1*v1) * e / (m1+m2)
+// Note: This is simplified 1D version - for 2D need to project onto collision
+// normal
 void balls_collide_elastic(Balls *balls, u32 i, u32 j) {
-    // parentheses or crash???
-    Vec2 v1_factor = SCALAR_MULT_COPY(balls->velocities[i],
-                                   (balls->masses[i] - balls->masses[j]));
-    Vec2 v2_factor = SCALAR_MULT_COPY(balls->velocities[j], 2 * balls->masses[j]);
-    Vec2 v1 = VECTOR_ADD_COPY(v1_factor, v2_factor);
-    SCALAR_MULT(v1, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+    Vec2 v1_factor =
+        vec2_scale(balls->velocities[i], balls->masses[i] - balls->masses[j]);
+    Vec2 v2_factor = vec2_scale(balls->velocities[j], 2 * balls->masses[j]);
+    Vec2 v1 = vec2_add(v1_factor, v2_factor);
+    vec2_scale_inplace(&v1,
+                       RESTITUTION / (balls->masses[i] + balls->masses[j]));
 
-    v2_factor = SCALAR_MULT_COPY(balls->velocities[j],
-                                   (balls->masses[j] - balls->masses[i]));
-    v1_factor = SCALAR_MULT_COPY(balls->velocities[i], 2 * balls->masses[i]);
-    Vec2 v2 = VECTOR_ADD_COPY(v2_factor, v1_factor);
-    SCALAR_MULT(v2, RESTITUTION / (balls->masses[i] + balls->masses[j]))
+    v2_factor =
+        vec2_scale(balls->velocities[j], balls->masses[j] - balls->masses[i]);
+    v1_factor = vec2_scale(balls->velocities[i], 2 * balls->masses[i]);
+    Vec2 v2 = vec2_add(v2_factor, v1_factor);
+    vec2_scale_inplace(&v2,
+                       RESTITUTION / (balls->masses[i] + balls->masses[j]));
     balls->velocities[i] = v1;
     balls->velocities[j] = v2;
 }
 
 void balls_interact(Balls *balls) {
-    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Vec2 vec_IJ = {.x = balls->positions[j].x - balls->positions[i].x,
-                           .y = balls->positions[j].y - balls->positions[i].y};
-            double r_size = sqrt(vec_IJ.x * vec_IJ.x + vec_IJ.y * vec_IJ.y);
+    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
+        balls->accelerations[i] = (Vec2){0, 0};
+    }
 
-            if (r_size <= balls->radiuses[i] + balls->radiuses[j]) {
-                Vec2 rel_velocity = {.x = balls->velocities[j].x - balls->velocities[i].x,
-                           .y = balls->velocities[j].y - balls->velocities[i].y};
-                // why does it have to be on a separate line??
-                double vsize = VECTOR_NORM(rel_velocity);
-                // is this check even physically sensible??
-                vsize >= 1  ? balls_collide_elastic(balls, i, j) : balls_collide_inelastic(balls,i, j);
-                balls->positions[j] = VECTOR_ADD_COPY(balls->positions[i], SCALAR_MULT_COPY(vec_IJ, (balls->radiuses[i]+balls->radiuses[j]+0.1) / r_size));
+    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
+        Ball b1 = ball_init_from_index(balls, i);
+        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+            Ball b2 = ball_init_from_index(balls, j);
+            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
+            double distance_scalar = vec2_length(distance_vec);
+
+            if (distance_scalar <= b1.radius + b2.radius) {
+                balls_collide_elastic(balls, i, j);
+                // change for biggest mass
+                b2.position =
+                    vec2_add(b1.position,
+                             vec2_scale(distance_vec, (b1.radius + b2.radius) /
+                                                          distance_scalar));
             }
 
-            balls->accelerations[i] = (Vec2){
-                G * balls->masses[j] / (r_size * r_size * r_size) * vec_IJ.x,
-                G * balls->masses[j] / (r_size * r_size * r_size) * vec_IJ.y};
+            b1.acceleration.x +=
+                G * b2.mass /
+                (distance_scalar * distance_scalar * distance_scalar) *
+                distance_vec.x,
+                b1.acceleration.y +=
+                G * b2.mass /
+                (distance_scalar * distance_scalar * distance_scalar) *
+                distance_vec.y;
 
-            balls->accelerations[j] = (Vec2){
-                -G * balls->masses[i] / (r_size * r_size * r_size) * vec_IJ.x,
-                -G * balls->masses[i] / (r_size * r_size * r_size) * vec_IJ.y};
+            b2.acceleration.x +=
+                -G * b1.mass /
+                (distance_scalar * distance_scalar * distance_scalar) *
+                distance_vec.x,
+                b2.acceleration.y +=
+                -G * b1.mass /
+                (distance_scalar * distance_scalar * distance_scalar) *
+                distance_vec.y;
+            store_ball_into_index(b2, balls, j);
         }
+        store_ball_into_index(b1, balls, i);
     }
 }
 
