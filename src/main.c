@@ -24,8 +24,6 @@ constexpr double MAX_ACUMULATOR = 0.25;
 constexpr double PHYS_DT = 1. / 120;
 constexpr double SIM_SPEED = 2000.0;
 constexpr double RESTITUTION = 0.8;
-constexpr double COLLISION_ENERGY_THRESHOLD =
-    50.0; // Kinetic energy threshold for elastic vs inelastic
 
 typedef struct {
     Vec2 positions[BALLS_NUMBER];
@@ -48,7 +46,7 @@ Balls balls_init();
 Ball ball_init_from_index(const Balls balls[static 1], u32 i);
 void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i);
 void balls_collide_inelastic(Balls *balls, u32 i, u32 j);
-void balls_collide_elastic(Balls *balls, u32 i, u32 j);
+void balls_collide_elastic(Ball *b1, Ball *b2);
 void balls_interact(Balls *balls);
 void balls_move(Balls *balls);
 void balls_draw(Balls *balls);
@@ -122,11 +120,11 @@ inline Ball ball_init_from_index(const Balls balls[static 1], u32 i) {
 
 inline void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i) {
     assert(balls != NULL && "store_ball_into_index needs ball to be not null");
-         balls->positions[i] = ball.position;
-         balls->velocities[i] = ball.velocity;
-         balls->accelerations[i] = ball.acceleration;
-         balls->masses[i] = ball.mass;
-         balls->radiuses[i] = ball.radius;
+    balls->positions[i] = ball.position;
+    balls->velocities[i] = ball.velocity;
+    balls->accelerations[i] = ball.acceleration;
+    balls->masses[i] = ball.mass;
+    balls->radiuses[i] = ball.radius;
 }
 
 // TODO: Implement or remove this stub function
@@ -137,8 +135,6 @@ void balls_fuse(Balls *balls, u32 i, u32 j) {
     // bruuuh
 }
 
-// Perfectly inelastic collision - conserves momentum, both objects move
-// together
 void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
     Vec2 v1_factor = vec2_scale(balls->velocities[i], balls->masses[i]);
     Vec2 v2_factor = vec2_scale(balls->velocities[j], balls->masses[j]);
@@ -148,28 +144,16 @@ void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
     balls->velocities[j] = v3;
 }
 
-// TODO: Elastic collision formula is CORRECT
-// Uses standard 1D elastic collision equations with coefficient of restitution
-// Formula: v1' = ((m1-m2)*v1 + 2*m2*v2) * e / (m1+m2)
-//          v2' = ((m2-m1)*v2 + 2*m1*v1) * e / (m1+m2)
-// Note: This is simplified 1D version - for 2D need to project onto collision
-// normal
-void balls_collide_elastic(Balls *balls, u32 i, u32 j) {
-    Vec2 v1_factor =
-        vec2_scale(balls->velocities[i], balls->masses[i] - balls->masses[j]);
-    Vec2 v2_factor = vec2_scale(balls->velocities[j], 2 * balls->masses[j]);
-    Vec2 v1 = vec2_add(v1_factor, v2_factor);
-    vec2_scale_inplace(&v1,
-                       RESTITUTION / (balls->masses[i] + balls->masses[j]));
-
-    v2_factor =
-        vec2_scale(balls->velocities[j], balls->masses[j] - balls->masses[i]);
-    v1_factor = vec2_scale(balls->velocities[i], 2 * balls->masses[i]);
-    Vec2 v2 = vec2_add(v2_factor, v1_factor);
-    vec2_scale_inplace(&v2,
-                       RESTITUTION / (balls->masses[i] + balls->masses[j]));
-    balls->velocities[i] = v1;
-    balls->velocities[j] = v2;
+void balls_collide_elastic(Ball *b1, Ball *b2) {
+    Vec2 normal12 = vec2_normalize(vec2_sub(b2->position, b1->position));
+    double v1 = vec2_dot(b1->velocity, normal12);
+    double v2 = vec2_dot(b2->velocity, normal12);
+    double vprime1 = ((b1->mass - b2->mass)*v1 + 2 * b2->mass * v2) * RESTITUTION / (b1->mass + b2->mass);
+    double vprime2 = ((b2->mass - b1->mass)*v2 + 2 * b1->mass * v1) * RESTITUTION / (b1->mass + b2->mass);
+    Vec2 v1_parallel = vec2_sub(b1->velocity, vec2_scale(normal12, v1));
+    Vec2 v2_parallel = vec2_sub(b2->velocity, vec2_scale(normal12, v2));
+    b1->velocity = vec2_add(v1_parallel, vec2_scale(normal12, vprime1));
+    b2->velocity = vec2_add(v2_parallel, vec2_scale(normal12, vprime2));
 }
 
 void balls_interact(Balls *balls) {
@@ -185,7 +169,7 @@ void balls_interact(Balls *balls) {
             double distance_scalar = vec2_length(distance_vec);
 
             if (distance_scalar <= b1.radius + b2.radius) {
-                balls_collide_elastic(balls, i, j);
+                balls_collide_elastic(&b1, &b2);
                 // change for biggest mass
                 b2.position =
                     vec2_add(b1.position,
