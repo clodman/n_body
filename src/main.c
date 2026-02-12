@@ -4,13 +4,13 @@
 #include <stdlib.h>
 
 #include "base.c"
-// fusions
-// scale
-// trajectories
-// autogen balls
-// RK 4
-// assert
-// drag and drop
+// TODO: fusions
+// TODO: scale
+// TODO: trajectories
+// TODO: autogen balls
+// TODO: RK 4
+// TODO: assert
+// TODO: drag and drop
 constexpr u32 TARGET_FPS = 120;
 
 struct Window {
