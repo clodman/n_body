@@ -23,7 +23,6 @@ constexpr double G = 6.674 * 10;
 constexpr double MAX_ACUMULATOR = 0.25;
 constexpr double PHYS_DT = 1. / 120;
 constexpr double SIM_SPEED = 2000.0;
-constexpr double RESTITUTION = 0.8;
 
 typedef struct {
     Vec2 positions[BALLS_NUMBER];
@@ -31,6 +30,7 @@ typedef struct {
     Vec2 accelerations[BALLS_NUMBER];
     double masses[BALLS_NUMBER];
     double radiuses[BALLS_NUMBER];
+    double restitutions[BALLS_NUMBER];
 } Balls;
 
 typedef struct {
@@ -39,13 +39,13 @@ typedef struct {
     Vec2 acceleration;
     double mass;
     double radius;
+    double restitution;
 } Ball;
 
 Vec2 screen_coordinates(Vec2 central_coordinates);
 Balls balls_init();
 Ball ball_init_from_index(const Balls balls[static 1], u32 i);
 void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i);
-void balls_collide_inelastic(Balls *balls, u32 i, u32 j);
 void balls_collide_elastic(Ball *b1, Ball *b2);
 void balls_interact(Balls *balls);
 void balls_move(Balls *balls);
@@ -101,10 +101,12 @@ inline Vec2 screen_coordinates(Vec2 central_coordinates) {
 
 Balls balls_init() {
     return (Balls){
+        .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
+        .velocities = {(Vec2){2, 0}, (Vec2){-0.5, 1}, (Vec2){1, 1}},
         .masses = {10, 30, 50},
         .radiuses = {10, 30, 50},
-        .positions = {(Vec2){0, 0}, (Vec2){0, 100}, (Vec2){-200, -100}},
-        .velocities = {(Vec2){2, 0}, (Vec2){-0.5, 1}, (Vec2){1, 1}}};
+        .restitutions = {1, 1, 1},
+    };
 }
 
 inline Ball ball_init_from_index(const Balls balls[static 1], u32 i) {
@@ -115,6 +117,7 @@ inline Ball ball_init_from_index(const Balls balls[static 1], u32 i) {
         .acceleration = balls->accelerations[i],
         .mass = balls->masses[i],
         .radius = balls->radiuses[i],
+        .restitution = balls->restitutions[i],
     };
 }
 
@@ -125,35 +128,38 @@ inline void store_ball_into_index(Ball ball, Balls balls[static 1], u32 i) {
     balls->accelerations[i] = ball.acceleration;
     balls->masses[i] = ball.mass;
     balls->radiuses[i] = ball.radius;
+    balls->restitutions[i] = ball.restitution;
 }
 
 // TODO: Implement or remove this stub function
 // Fusion should: combine masses, compute new velocity from momentum
 // conservation, remove one ball, adjust BALLS_NUMBER (requires dynamic
 // allocation)
-void balls_fuse(Balls *balls, u32 i, u32 j) {
+void balls_fuse(Ball *b1, Ball *b2) {
     // bruuuh
-}
-
-void balls_collide_inelastic(Balls *balls, u32 i, u32 j) {
-    Vec2 v1_factor = vec2_scale(balls->velocities[i], balls->masses[i]);
-    Vec2 v2_factor = vec2_scale(balls->velocities[j], balls->masses[j]);
-    Vec2 v3 = vec2_add(v1_factor, v2_factor);
-    vec2_scale_inplace(&v3, 1. / (balls->masses[i] + balls->masses[j]));
-    balls->velocities[i] = v3;
-    balls->velocities[j] = v3;
 }
 
 void balls_collide_elastic(Ball *b1, Ball *b2) {
     Vec2 normal12 = vec2_normalize(vec2_sub(b2->position, b1->position));
+
     double v1 = vec2_dot(b1->velocity, normal12);
     double v2 = vec2_dot(b2->velocity, normal12);
-    double vprime1 = ((b1->mass - b2->mass)*v1 + 2 * b2->mass * v2) * RESTITUTION / (b1->mass + b2->mass);
-    double vprime2 = ((b2->mass - b1->mass)*v2 + 2 * b1->mass * v1) * RESTITUTION / (b1->mass + b2->mass);
-    Vec2 v1_parallel = vec2_sub(b1->velocity, vec2_scale(normal12, v1));
-    Vec2 v2_parallel = vec2_sub(b2->velocity, vec2_scale(normal12, v2));
-    b1->velocity = vec2_add(v1_parallel, vec2_scale(normal12, vprime1));
-    b2->velocity = vec2_add(v2_parallel, vec2_scale(normal12, vprime2));
+    double p1 = b1->mass * v1;
+    double p2 = b2->mass * v2;
+
+    double speed_normal_relative = v1 - v2;
+    if (speed_normal_relative <= 0)
+        return;
+
+    double vprime1 = (1 + MIN(b1->restitution, b2->restitution)) * (p1 + p2) / (b1->mass + b2->mass) -
+                     MIN(b1->restitution, b2->restitution) * v1;
+    double vprime2 = (1 + MIN(b1->restitution, b2->restitution)) * (p1 + p2) / (b1->mass + b2->mass) -
+                     MIN(b1->restitution, b2->restitution) * v2;
+
+    Vec2 v1_tangential = vec2_sub(b1->velocity, vec2_scale(normal12, v1));
+    Vec2 v2_tangential = vec2_sub(b2->velocity, vec2_scale(normal12, v2));
+    b1->velocity = vec2_add(v1_tangential, vec2_scale(normal12, vprime1));
+    b2->velocity = vec2_add(v2_tangential, vec2_scale(normal12, vprime2));
 }
 
 void balls_interact(Balls *balls) {
