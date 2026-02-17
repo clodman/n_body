@@ -56,16 +56,16 @@ static Window window = {
 };
 
 static void balls_handle_input();
-static Vec2 to_screen_position(Vec2 world_position);
 static Balls balls_init(void);
 static Ball balls_ball_set(const Balls *balls, u32 i);
 static void balls_ball_get(Ball ball, Balls *balls, u32 i);
-static void balls_resolve_colition(Ball *b1, Ball *b2);
-static void balls_separate_overlap(Ball *b1, Ball *b2);
 static void balls_accelerate(Balls *balls);
 static void balls_colide(Balls *balls);
+static void balls_resolve_colition(Ball *b1, Ball *b2);
+static void balls_separate_overlap(Ball *b1, Ball *b2);
 static void balls_move(Balls *balls);
 static void balls_draw(const Balls *balls, Color color);
+static Vec2 to_screen_position(Vec2 world_position);
 
 int main(void) {
     assert(BALLS_NUMBER > 0);
@@ -135,19 +135,6 @@ static void balls_handle_input() {
     }
 }
 
-static Vec2 to_screen_position(Vec2 world_position) {
-    if (IsWindowResized()) {
-        window.width = (u32)GetScreenWidth();
-        window.height = (u32)GetScreenHeight();
-    }
-
-    world_position.x =
-        world_position.x * window.zoom + window.width / 2.0 + window.shifting.x;
-    world_position.y = window.height / 2.0 - world_position.y * window.zoom +
-                       window.shifting.y;
-
-    return world_position;
-}
 
 static Balls balls_init(void) {
     Balls result = {0};
@@ -212,6 +199,59 @@ static void balls_ball_get(Ball ball, Balls *balls, u32 i) {
     balls->restitutions[i] = ball.restitution;
 }
 
+static void balls_accelerate(Balls *balls) {
+    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
+        balls->accelerations[i] = (Vec2){0, 0};
+    }
+    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
+        Ball b1 = balls_ball_set(balls, i);
+
+        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+            Ball b2 = balls_ball_set(balls, j);
+
+            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
+            double distance_scalar = vec2_length(distance_vec);
+
+            double inv_r3 =
+                1.0 / (distance_scalar * distance_scalar * distance_scalar);
+
+            b1.acceleration.x += G * b2.mass * inv_r3 * distance_vec.x;
+            b1.acceleration.y += G * b2.mass * inv_r3 * distance_vec.y;
+
+            b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
+            b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
+        }
+    }
+}
+
+static void balls_colide(Balls *balls) {
+    assert(balls != NULL);
+
+    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
+        Ball b1 = balls_ball_set(balls, i);
+
+        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+            Ball b2 = balls_ball_set(balls, j);
+
+            if (b1.mass * b2.mass == 0.0) {
+                continue;
+            }
+
+            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
+            double distance_scalar = vec2_length(distance_vec);
+
+            if (distance_scalar <= b1.radius + b2.radius) {
+                balls_resolve_colition(&b1, &b2);
+                balls_separate_overlap(&b1, &b2);
+            }
+
+            balls_ball_get(b2, balls, j);
+        }
+
+        balls_ball_get(b1, balls, i);
+    }
+}
+
 static void balls_resolve_colition(Ball *b1, Ball *b2) {
     Vec2 normal12 = vec2_normalize(vec2_sub(b2->position, b1->position));
 
@@ -267,59 +307,6 @@ static void balls_separate_overlap(Ball *b1, Ball *b2) {
     b2->position = vec2_add(b2->position, vec2_scale(correction, inv_m2));
 }
 
-static void balls_accelerate(Balls *balls) {
-    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        balls->accelerations[i] = (Vec2){0, 0};
-    }
-    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        Ball b1 = balls_ball_set(balls, i);
-
-        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Ball b2 = balls_ball_set(balls, j);
-
-            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
-            double distance_scalar = vec2_length(distance_vec);
-
-            double inv_r3 =
-                1.0 / (distance_scalar * distance_scalar * distance_scalar);
-
-            b1.acceleration.x += G * b2.mass * inv_r3 * distance_vec.x;
-            b1.acceleration.y += G * b2.mass * inv_r3 * distance_vec.y;
-
-            b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
-            b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
-        }
-    }
-}
-
-static void balls_colide(Balls *balls) {
-    assert(balls != NULL);
-
-    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        Ball b1 = balls_ball_set(balls, i);
-
-        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Ball b2 = balls_ball_set(balls, j);
-
-            if (b1.mass * b2.mass == 0.0) {
-                continue;
-            }
-
-            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
-            double distance_scalar = vec2_length(distance_vec);
-
-            if (distance_scalar <= b1.radius + b2.radius) {
-                balls_resolve_colition(&b1, &b2);
-                balls_separate_overlap(&b1, &b2);
-            }
-
-            balls_ball_get(b2, balls, j);
-        }
-
-        balls_ball_get(b1, balls, i);
-    }
-}
-
 static void balls_move(Balls *balls) {
     assert(balls != NULL);
 
@@ -332,6 +319,7 @@ static void balls_move(Balls *balls) {
     }
 }
 
+
 static void balls_draw(const Balls *balls, Color color) {
     assert(balls != NULL);
 
@@ -341,4 +329,18 @@ static void balls_draw(const Balls *balls, Color color) {
 
         DrawCircle((int)screen_p.x, (int)screen_p.y, (float)r, color);
     }
+}
+
+static Vec2 to_screen_position(Vec2 world_position) {
+    if (IsWindowResized()) {
+        window.width = (u32)GetScreenWidth();
+        window.height = (u32)GetScreenHeight();
+    }
+
+    world_position.x =
+        world_position.x * window.zoom + window.width / 2.0 + window.shifting.x;
+    world_position.y = window.height / 2.0 - world_position.y * window.zoom +
+                       window.shifting.y;
+
+    return world_position;
 }
