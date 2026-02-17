@@ -4,12 +4,13 @@
 #include <stdbool.h>
 #include <time.h>
 
+// TODO: fusion
+
 typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 10,
-    TRAIL_LENGTH = 1024,
+    BALLS_NUMBER = 500,
 };
 
 static const double G = 6.674 * 10.0;
@@ -24,7 +25,6 @@ typedef struct {
     u32 height;
     u32 width;
     bool paused;
-    bool draw_balls;
     double zoom;
     Vec2 shifting;
 } Window;
@@ -36,10 +36,6 @@ typedef struct {
     double masses[BALLS_NUMBER];
     double radiuses[BALLS_NUMBER];
     double restitutions[BALLS_NUMBER];
-
-    Vec2 trail[BALLS_NUMBER][TRAIL_LENGTH];
-    u32 trail_head[BALLS_NUMBER];
-    bool trail_filled[BALLS_NUMBER];
 } Balls;
 
 typedef struct {
@@ -55,22 +51,21 @@ static Window window = {
     .width = 800,
     .height = 600,
     .paused = false,
-    .draw_balls = true,
     .zoom = 1.0,
     .shifting = (Vec2){0.0, 0.0},
 };
 
+static void balls_handle_input();
 static Vec2 to_screen_position(Vec2 world_position);
 static Balls balls_init(void);
 static Ball balls_ball_set(const Balls *balls, u32 i);
 static void balls_ball_get(Ball ball, Balls *balls, u32 i);
 static void balls_resolve_colition(Ball *b1, Ball *b2);
 static void balls_separate_overlap(Ball *b1, Ball *b2);
-static void balls_interact(Balls *balls);
+static void balls_accelerate(Balls *balls);
+static void balls_colide(Balls *balls);
 static void balls_move(Balls *balls);
 static void balls_draw(const Balls *balls, Color color);
-static void balls_trail_push(Balls *balls, u32 i, Vec2 p);
-static void balls_draw_trails(const Balls *balls, Color base_color);
 
 int main(void) {
     assert(BALLS_NUMBER > 0);
@@ -86,57 +81,22 @@ int main(void) {
         BeginDrawing();
         ClearBackground(BLACK);
 
-        if (IsKeyPressed(KEY_SPACE)) {
-            window.paused = !window.paused;
-        }
-
-        if (IsKeyPressed(KEY_B)) {
-            window.draw_balls = !window.draw_balls;
-        }
-
-        if (IsKeyPressed(KEY_W)) {
-            window.zoom *= 2.0;
-        }
-
-        if (IsKeyPressed(KEY_S)) {
-            window.zoom /= 2.0;
-        }
-
-        if (IsKeyDown(KEY_UP)) {
-            window.shifting.y += 10.0 / window.zoom;
-        }
-
-        if (IsKeyDown(KEY_DOWN)) {
-            window.shifting.y -= 10.0 / window.zoom;
-        }
-
-        if (IsKeyDown(KEY_RIGHT)) {
-            window.shifting.x -= 10.0 / window.zoom;
-        }
-
-        if (IsKeyDown(KEY_LEFT)) {
-            window.shifting.x += 10.0 / window.zoom;
-        }
+        balls_handle_input();
 
         if (!window.paused) {
             acumulator += GetFrameTime() * SIM_SPEED;
             acumulator = MIN(acumulator, MAX_ACUMULATOR);
 
             while (acumulator >= PHYS_DT) {
-                balls_interact(&balls);
+                balls_accelerate(&balls);
+                balls_colide(&balls);
                 balls_move(&balls);
                 acumulator -= PHYS_DT;
             }
 
-            balls_draw_trails(&balls, (Color){200, 200, 200, 255});
-            if (window.draw_balls) {
-                balls_draw(&balls, LIGHTGRAY);
-            }
+            balls_draw(&balls, LIGHTGRAY);
         } else {
-            balls_draw_trails(&balls, (Color){65, 67, 67, 255});
-            if (window.draw_balls) {
-                balls_draw(&balls, (Color){65, 67, 67, 255});
-            }
+            balls_draw(&balls, (Color){65, 67, 67, 255});
             DrawText("PAUSED", (int)(window.width / 2.0 - 11.0 * 3.0),
                      (int)(window.height / 2.0 - 20.0), 20, LIGHTGRAY);
         }
@@ -151,6 +111,30 @@ int main(void) {
     return 0;
 }
 
+static void balls_handle_input() {
+    if (IsKeyPressed(KEY_SPACE)) {
+        window.paused = !window.paused;
+    }
+    if (IsKeyPressed(KEY_W)) {
+        window.zoom *= 2.0;
+    }
+    if (IsKeyPressed(KEY_S)) {
+        window.zoom /= 2.0;
+    }
+    if (IsKeyDown(KEY_UP)) {
+        window.shifting.y += 10.0 / window.zoom;
+    }
+    if (IsKeyDown(KEY_DOWN)) {
+        window.shifting.y -= 10.0 / window.zoom;
+    }
+    if (IsKeyDown(KEY_RIGHT)) {
+        window.shifting.x -= 10.0 / window.zoom;
+    }
+    if (IsKeyDown(KEY_LEFT)) {
+        window.shifting.x += 10.0 / window.zoom;
+    }
+}
+
 static Vec2 to_screen_position(Vec2 world_position) {
     if (IsWindowResized()) {
         window.width = (u32)GetScreenWidth();
@@ -163,17 +147,6 @@ static Vec2 to_screen_position(Vec2 world_position) {
                        window.shifting.y;
 
     return world_position;
-}
-
-static void balls_trail_push(Balls *balls, u32 i, Vec2 p) {
-    assert(balls != NULL);
-    assert(i < BALLS_NUMBER);
-
-    balls->trail[i][balls->trail_head[i]] = p;
-    balls->trail_head[i] = (balls->trail_head[i] + 1u) % (u32)TRAIL_LENGTH;
-    if (balls->trail_head[i] == 0u) {
-        balls->trail_filled[i] = true;
-    }
 }
 
 static Balls balls_init(void) {
@@ -208,18 +181,6 @@ static Balls balls_init(void) {
         result.velocities[i] =
             vec2_add(vec2_scale(et, v_circ * tangential_scale),
                      vec2_scale(er, radial_inward));
-    }
-
-    // initialize trails with current positions (avoid long line from (0,0))
-    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        result.trail_head[i] = 0;
-        result.trail_filled[i] = false;
-        for (u32 k = 0; k < (u32)TRAIL_LENGTH; ++k) {
-            result.trail[i][k] = result.positions[i];
-        }
-        result.trail_filled[i] =
-            true; // treat as filled so it immediately draws
-        result.trail_head[i] = 0;
     }
 
     return result;
@@ -306,12 +267,33 @@ static void balls_separate_overlap(Ball *b1, Ball *b2) {
     b2->position = vec2_add(b2->position, vec2_scale(correction, inv_m2));
 }
 
-static void balls_interact(Balls *balls) {
-    assert(balls != NULL);
-
+static void balls_accelerate(Balls *balls) {
     for (u32 i = 0; i < BALLS_NUMBER; ++i) {
         balls->accelerations[i] = (Vec2){0, 0};
     }
+    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
+        Ball b1 = balls_ball_set(balls, i);
+
+        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+            Ball b2 = balls_ball_set(balls, j);
+
+            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
+            double distance_scalar = vec2_length(distance_vec);
+
+            double inv_r3 =
+                1.0 / (distance_scalar * distance_scalar * distance_scalar);
+
+            b1.acceleration.x += G * b2.mass * inv_r3 * distance_vec.x;
+            b1.acceleration.y += G * b2.mass * inv_r3 * distance_vec.y;
+
+            b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
+            b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
+        }
+    }
+}
+
+static void balls_colide(Balls *balls) {
+    assert(balls != NULL);
 
     for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
         Ball b1 = balls_ball_set(balls, i);
@@ -331,17 +313,6 @@ static void balls_interact(Balls *balls) {
                 balls_separate_overlap(&b1, &b2);
             }
 
-            // NOTE: unchanged; if you ever get NaNs, guard distance_scalar >
-            // eps here.
-            double inv_r3 =
-                1.0 / (distance_scalar * distance_scalar * distance_scalar);
-
-            b1.acceleration.x += G * b2.mass * inv_r3 * distance_vec.x;
-            b1.acceleration.y += G * b2.mass * inv_r3 * distance_vec.y;
-
-            b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
-            b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
-
             balls_ball_get(b2, balls, j);
         }
 
@@ -358,41 +329,6 @@ static void balls_move(Balls *balls) {
 
         balls->positions[i].x += balls->velocities[i].x * PHYS_DT;
         balls->positions[i].y += balls->velocities[i].y * PHYS_DT;
-
-        // push a trajectory sample each physics step
-        balls_trail_push(balls, i, balls->positions[i]);
-    }
-}
-
-static void balls_draw_trails(const Balls *balls, Color base_color) {
-    assert(balls != NULL);
-
-    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        u32 count =
-            balls->trail_filled[i] ? (u32)TRAIL_LENGTH : balls->trail_head[i];
-        if (count < 2u)
-            continue;
-
-        u32 start = balls->trail_filled[i] ? balls->trail_head[i] : 0u;
-
-        for (u32 s = 0; s + 1u < count; ++s) {
-            u32 idx0 = (start + s) % (u32)TRAIL_LENGTH;
-            u32 idx1 = (start + s + 1u) % (u32)TRAIL_LENGTH;
-
-            Vec2 p0w = balls->trail[i][idx0];
-            Vec2 p1w = balls->trail[i][idx1];
-
-            Vec2 p0 = to_screen_position(p0w);
-            Vec2 p1 = to_screen_position(p1w);
-
-            float t = (count <= 2u) ? 1.0f : (float)s / (float)(count - 1u);
-            unsigned char a = (unsigned char)(base_color.a * t);
-
-            Color c = base_color;
-            c.a = a;
-
-            DrawLine((int)p0.x, (int)p0.y, (int)p1.x, (int)p1.y, c);
-        }
     }
 }
 

@@ -1,0 +1,3 @@
+/Users/waitman/Documents/codemann/CLANG/n-body/CMakeFiles/raylib_app.dir
+/Users/waitman/Documents/codemann/CLANG/n-body/CMakeFiles/edit_cache.dir
+/Users/waitman/Documents/codemann/CLANG/n-body/CMakeFiles/rebuild_cache.dir
