@@ -8,13 +8,16 @@ typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 20,
+    BALLS_NUMBER = 300,
 };
 
 static const double G = 6.674 * 100.0;
 static const double MAX_ACUMULATOR = 0.25;
 static const double PHYS_DT = 0.1 / (double)TARGET_FPS;
 static const double SIM_SPEED = 2.0;
+
+static const double COLLISION_SLOP = 0.01;
+static const double COLLISION_PERCENT = 0.8;
 
 typedef struct {
     u32 height;
@@ -231,6 +234,37 @@ static void balls_resolve_colition(Ball *b1, Ball *b2) {
     b2->velocity = vec2_add(v2_tangential, vec2_scale(normal12, vprime2));
 }
 
+static void balls_separate_overlap(Ball *b1, Ball *b2)
+{
+    Vec2 delta = vec2_sub(b2->position, b1->position);
+    double dist = vec2_length(delta);
+
+    if (!(dist > 0.0))
+    {
+        return;
+    }
+
+    double min_dist = b1->radius + b2->radius;
+    double penetration = min_dist - dist;
+
+    if (penetration <= 0.0)
+    {
+        return;
+    }
+
+    Vec2 n = vec2_scale(delta, 1.0 / dist);
+
+    double inv_m1 = 1.0 / b1->mass;
+    double inv_m2 = 1.0 / b2->mass;
+    double inv_sum = inv_m1 + inv_m2;
+
+    double corr_mag = COLLISION_PERCENT * MAX(penetration - COLLISION_SLOP, 0.0) / inv_sum;
+    Vec2 correction = vec2_scale(n, corr_mag);
+
+    b1->position = vec2_sub(b1->position, vec2_scale(correction, inv_m1));
+    b2->position = vec2_add(b2->position, vec2_scale(correction, inv_m2));
+}
+
 static void balls_interact(Balls *balls) {
     assert(balls != NULL);
 
@@ -253,11 +287,7 @@ static void balls_interact(Balls *balls) {
 
             if (distance_scalar <= b1.radius + b2.radius) {
                 balls_resolve_colition(&b1, &b2);
-
-                b2.position =
-                    vec2_add(b1.position,
-                             vec2_scale(distance_vec, (b1.radius + b2.radius) /
-                                                          distance_scalar));
+                balls_separate_overlap(&b1, &b2);
             }
 
             double inv_r3 =
