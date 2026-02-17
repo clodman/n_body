@@ -373,7 +373,6 @@ static void balls_draw_trails(const Balls *balls, Color base_color) {
         if (count < 2u)
             continue;
 
-        // oldest sample index in the circular buffer
         u32 start = balls->trail_filled[i] ? balls->trail_head[i] : 0u;
 
         for (u32 s = 0; s + 1u < count; ++s) {
@@ -386,7 +385,6 @@ static void balls_draw_trails(const Balls *balls, Color base_color) {
             Vec2 p0 = to_screen_position(p0w);
             Vec2 p1 = to_screen_position(p1w);
 
-            // simple fade: old segments more transparent
             float t = (count <= 2u) ? 1.0f : (float)s / (float)(count - 1u);
             unsigned char a = (unsigned char)(base_color.a * t);
 
