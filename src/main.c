@@ -10,7 +10,7 @@ typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 500,
+    BALLS_NUMBER = 800,
 };
 
 static const double G = 6.674 * 10.0;
@@ -122,16 +122,16 @@ static void balls_handle_input() {
         window.zoom /= 2.0;
     }
     if (IsKeyDown(KEY_UP)) {
-        window.shifting.y += 10.0 / window.zoom;
+        window.shifting.y += 7.0 / window.zoom;
     }
     if (IsKeyDown(KEY_DOWN)) {
-        window.shifting.y -= 10.0 / window.zoom;
+        window.shifting.y -= 7.0 / window.zoom;
     }
     if (IsKeyDown(KEY_RIGHT)) {
-        window.shifting.x -= 10.0 / window.zoom;
+        window.shifting.x -= 7.0 / window.zoom;
     }
     if (IsKeyDown(KEY_LEFT)) {
-        window.shifting.x += 10.0 / window.zoom;
+        window.shifting.x += 7.0 / window.zoom;
     }
 }
 
