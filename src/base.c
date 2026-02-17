@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdlib.h>
 #include <math.h>
 
 typedef int8_t i8;
@@ -72,4 +73,14 @@ static inline Vec2 vec2_normalize(Vec2 v) {
     double len = vec2_length(v);
     if (len < 1e-10) return (Vec2){0, 0};  // Avoid division by zero
     return vec2_scale(v, 1.0 / len);
+}
+
+static double frand01(void)
+{
+    return (double)rand() / (double)RAND_MAX;
+}
+
+double frand(double a, double b)
+{
+    return a + (b - a) * frand01();
 }
