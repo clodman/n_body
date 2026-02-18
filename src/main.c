@@ -10,7 +10,7 @@ typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 600,
+    BALLS_NUMBER = 400,
 };
 
 static const double G = 6.674 * 10.0;
@@ -135,7 +135,6 @@ static void balls_handle_input() {
     }
 }
 
-
 static Balls balls_init(void) {
     Balls result = {0};
 
@@ -220,7 +219,9 @@ static void balls_accelerate(Balls *balls) {
 
             b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
             b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
+        balls_ball_get(b2, balls, j);
         }
+    balls_ball_get(b1, balls, i);
     }
 }
 
@@ -318,7 +319,6 @@ static void balls_move(Balls *balls) {
         balls->positions[i].y += balls->velocities[i].y * PHYS_DT;
     }
 }
-
 
 static void balls_draw(const Balls *balls, Color color) {
     assert(balls != NULL);
