@@ -10,7 +10,7 @@ typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 800,
+    BALLS_NUMBER = 600,
 };
 
 static const double G = 6.674 * 10.0;
