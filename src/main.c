@@ -81,6 +81,11 @@ int main(void) {
         BeginDrawing();
         ClearBackground(BLACK);
 
+        if (IsWindowResized()) {
+            window.width = (u32)GetScreenWidth();
+            window.height = (u32)GetScreenHeight();
+        }
+
         balls_handle_input();
 
         if (!window.paused) {
@@ -122,16 +127,16 @@ static void balls_handle_input() {
         window.zoom /= 2.0;
     }
     if (IsKeyDown(KEY_UP)) {
-        window.shifting.y += 7.0 / window.zoom;
+        window.shifting.y += 70.0 * sqrt(window.zoom);
     }
     if (IsKeyDown(KEY_DOWN)) {
-        window.shifting.y -= 7.0 / window.zoom;
+        window.shifting.y -= 70.0 * sqrt(window.zoom);
     }
     if (IsKeyDown(KEY_RIGHT)) {
-        window.shifting.x -= 7.0 / window.zoom;
+        window.shifting.x -= 70.0 * sqrt(window.zoom);
     }
     if (IsKeyDown(KEY_LEFT)) {
-        window.shifting.x += 7.0 / window.zoom;
+        window.shifting.x += 70.0 * sqrt(window.zoom);
     }
 }
 
@@ -219,9 +224,9 @@ static void balls_accelerate(Balls *balls) {
 
             b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
             b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
-        balls_ball_get(b2, balls, j);
+            balls_ball_get(b2, balls, j);
         }
-    balls_ball_get(b1, balls, i);
+        balls_ball_get(b1, balls, i);
     }
 }
 
@@ -234,14 +239,10 @@ static void balls_colide(Balls *balls) {
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
             Ball b2 = balls_ball_set(balls, j);
 
-            if (b1.mass * b2.mass == 0.0) {
-                continue;
-            }
-
             Vec2 distance_vec = vec2_sub(b2.position, b1.position);
-            double distance_scalar = vec2_length(distance_vec);
+            double distance_scalar2 = vec2_dot(distance_vec, distance_vec);
 
-            if (distance_scalar <= b1.radius + b2.radius) {
+            if (distance_scalar2 <= (b1.radius + b2.radius)*(b1.radius + b2.radius)) {
                 balls_resolve_colition(&b1, &b2);
                 balls_separate_overlap(&b1, &b2);
             }
@@ -332,11 +333,6 @@ static void balls_draw(const Balls *balls, Color color) {
 }
 
 static Vec2 to_screen_position(Vec2 world_position) {
-    if (IsWindowResized()) {
-        window.width = (u32)GetScreenWidth();
-        window.height = (u32)GetScreenHeight();
-    }
-
     world_position.x =
         world_position.x * window.zoom + window.width / 2.0 + window.shifting.x;
     world_position.y = window.height / 2.0 - world_position.y * window.zoom +
