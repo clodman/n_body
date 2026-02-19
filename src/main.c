@@ -121,10 +121,10 @@ static void balls_handle_input() {
         window.paused = !window.paused;
     }
     if (IsKeyPressed(KEY_W)) {
-        window.zoom *= 2.0;
+        window.zoom *= 1.5;
     }
     if (IsKeyPressed(KEY_S)) {
-        window.zoom /= 2.0;
+        window.zoom /= 1.5;
     }
     if (IsKeyDown(KEY_UP)) {
         window.shifting.y += 70.0 * sqrt(window.zoom);
