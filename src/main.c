@@ -13,7 +13,7 @@ enum {
     BALLS_NUMBER = 400,
 };
 
-static const double G = 6.674 * 10.0;
+static const double G = 6.674 * 1000.0;
 static const double MAX_ACUMULATOR = 0.25;
 static const double PHYS_DT = 0.1 / (double)TARGET_FPS;
 static const double SIM_SPEED = 2.0;
@@ -140,12 +140,12 @@ static Balls balls_init(void) {
 
     result.positions[0] = (Vec2){0, 0};
     result.velocities[0] = (Vec2){0, 0};
-    result.masses[0] = 20000.0;
-    result.radiuses[0] = 30.0;
-    result.restitutions[0] = 1.0;
+    result.masses[0] = 200000.0;
+    result.radiuses[0] = 300.0;
+    result.restitutions[0] = 0.7;
 
     for (u32 i = 1; i < BALLS_NUMBER; ++i) {
-        double r = frand(150.0, 700.0);
+        double r = frand(5000.0, 7000.0);
         double a = frand(0.0, 2.0 * M_PI);
 
         Vec2 pos = (Vec2){r * cos(a), r * sin(a)};
@@ -159,10 +159,10 @@ static Balls balls_init(void) {
         result.restitutions[i] = frand(0.7, 1.0);
 
         double M = result.masses[0];
-        double v_circ = sqrt(G * M / r) * 0.7;
+        double v_circ = sqrt(G * M / r);
 
         double tangential_scale = frand(0.85, 0.98);
-        double radial_inward = -1.0 * v_circ;
+        double radial_inward = -0.0 * v_circ;
 
         result.velocities[i] =
             vec2_add(vec2_scale(et, v_circ * tangential_scale),
