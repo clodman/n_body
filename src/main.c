@@ -58,12 +58,10 @@ static Window window = {
 
 static void balls_handle_input();
 static Balls balls_init(void);
-static Ball balls_ball_set(const Balls *balls, u32 i);
-static void balls_ball_get(Ball ball, Balls *balls, u32 i);
 static void balls_accelerate(Balls *balls);
 static void balls_colide(Balls *balls);
-static void balls_resolve_colition(Ball *b1, Ball *b2, Vec2 n12);
-static void balls_separate_overlap(Ball *b1, Ball *b2, Vec2 n12, double dist);
+static void balls_resolve_colition(Balls *balls, u32 i, u32 j, Vec2 n12);
+static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12, double dist);
 static void balls_move(Balls *balls);
 static void balls_draw(const Balls *balls, Color color);
 static Vec2 to_screen_position(Vec2 world_position);
@@ -178,54 +176,34 @@ static Balls balls_init(void) {
     return result;
 }
 
-static Ball balls_ball_set(const Balls *balls, u32 i) {
-    assert(balls != NULL);
-    assert(i < BALLS_NUMBER);
-
-    return (Ball){
-        .position = balls->positions[i],
-        .velocity = balls->velocities[i],
-        .acceleration = balls->accelerations[i],
-        .mass = balls->masses[i],
-        .radius = balls->radiuses[i],
-        .restitution = balls->restitutions[i],
-    };
-}
-
-static void balls_ball_get(Ball ball, Balls *balls, u32 i) {
-    assert(balls != NULL);
-    assert(i < BALLS_NUMBER);
-
-    balls->positions[i] = ball.position;
-    balls->velocities[i] = ball.velocity;
-    balls->accelerations[i] = ball.acceleration;
-    balls->masses[i] = ball.mass;
-    balls->radiuses[i] = ball.radius;
-    balls->restitutions[i] = ball.restitution;
-}
-
 static void balls_accelerate(Balls *balls) {
+    const double eps2 = (double)GRAVITATIONAL_SOFTENING * (double)GRAVITATIONAL_SOFTENING;
+
     for (u32 i = 0; i < BALLS_NUMBER; ++i) {
-        balls->accelerations[i] = (Vec2){0, 0};
-    }
-    for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        Ball b1 = balls_ball_set(balls, i);
+        const Vec2 pi = balls->positions[i];
 
-        for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
+        double ax = 0.;
+        double ay = 0.;
 
-            Vec2 distance_vec = vec2_sub(balls->positions[j], b1.position);
-            double distance_scalar = vec2_length(distance_vec) + GRAVITATIONAL_SOFTENING;
+        for (u32 j = 0; j < BALLS_NUMBER; ++j) {
+            if (j == i) continue;
 
-            double inv_r3 =
-                1.0 / (distance_scalar * distance_scalar * distance_scalar);
+            const Vec2 pj = balls->positions[j];
+            const double dx = (double)pj.x - (double)pi.x;
+            const double dy = (double)pj.y - (double)pi.y;
 
-            b1.acceleration.x += G * balls->masses[j] * inv_r3 * distance_vec.x;
-            b1.acceleration.y += G * balls->masses[j] * inv_r3 * distance_vec.y;
+            const double r2 = dx * dx + dy * dy + eps2;
 
-            balls->accelerations[j].x += -G * b1.mass * inv_r3 * distance_vec.x;
-            balls->accelerations[j].y += -G * b1.mass * inv_r3 * distance_vec.y;
+            const double inv_r  = 1. / sqrt(r2);
+            const double inv_r3 = inv_r * inv_r * inv_r;
+
+            const double s = G * (double)balls->masses[j] * inv_r3;
+
+            ax += s * dx;
+            ay += s * dy;
         }
-        balls_ball_get(b1, balls, i);
+
+        balls->accelerations[i] = (Vec2){ (float)ax, (float)ay };
     }
 }
 
@@ -233,71 +211,65 @@ static void balls_colide(Balls *balls) {
     assert(balls != NULL);
 
     for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
-        Ball b1 = balls_ball_set(balls, i);
-
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Ball b2 = balls_ball_set(balls, j);
-
-            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
+            Vec2 distance_vec = vec2_sub(balls->positions[j], balls->positions[i]);
             double distance_scalar2 = vec2_dot(distance_vec, distance_vec);
 
-            if (distance_scalar2 <= (b1.radius + b2.radius)*(b1.radius + b2.radius)) {
-                Vec2 delta = vec2_sub(b2.position, b1.position);
+            double radius_sum = balls->radiuses[i] + balls->radiuses[j];
+            if (distance_scalar2 <= radius_sum * radius_sum) {
+                Vec2 delta = vec2_sub(balls->positions[j], balls->positions[i]);
                 double dist = vec2_length(delta);
                 Vec2 n12 = vec2_scale(delta, 1 / dist);
-                balls_resolve_colition(&b1, &b2, n12);
-                balls_separate_overlap(&b1, &b2, n12, dist);
+                balls_resolve_colition(balls, i, j, n12);
+                balls_separate_overlap(balls, i, j, n12, dist);
             }
-
-            balls_ball_get(b2, balls, j);
         }
-
-        balls_ball_get(b1, balls, i);
     }
 }
 
-static void balls_resolve_colition(Ball *b1, Ball *b2, Vec2 n12) {
+static void balls_resolve_colition(Balls *balls, u32 i, u32 j, Vec2 n12) {
 
-    double v1 = vec2_dot(b1->velocity, n12);
-    double v2 = vec2_dot(b2->velocity, n12);
+    const double v1 = vec2_dot(balls->velocities[i], n12);
+    const double v2 = vec2_dot(balls->velocities[j], n12);
 
-    double p1 = b1->mass * v1;
-    double p2 = b2->mass * v2;
+    const double p1 = balls->masses[i] * v1;
+    const double p2 = balls->masses[j] * v2;
 
-    double speed_normal_relative = v1 - v2;
+    const double speed_normal_relative = v1 - v2;
     if (speed_normal_relative <= 0.0) {
         return;
     }
 
-    double e = MIN(b1->restitution, b2->restitution);
+    const double e = MIN(balls->restitutions[i], balls->restitutions[j]);
 
-    double vprime1 = (1.0 + e) * (p1 + p2) / (b1->mass + b2->mass) - e * v1;
-    double vprime2 = (1.0 + e) * (p1 + p2) / (b1->mass + b2->mass) - e * v2;
+    const double mass_sum = balls->masses[i] + balls->masses[j];
+    const double vprime1 = (1.0 + e) * (p1 + p2) / mass_sum - e * v1;
+    const double vprime2 = (1.0 + e) * (p1 + p2) / mass_sum - e * v2;
 
-    Vec2 v1_tangential = vec2_sub(b1->velocity, vec2_scale(n12, v1));
-    Vec2 v2_tangential = vec2_sub(b2->velocity, vec2_scale(n12, v2));
+    Vec2 v1_tangential = vec2_sub(balls->velocities[i], vec2_scale(n12, v1));
+    Vec2 v2_tangential = vec2_sub(balls->velocities[j], vec2_scale(n12, v2));
 
-    b1->velocity = vec2_add(v1_tangential, vec2_scale(n12, vprime1));
-    b2->velocity = vec2_add(v2_tangential, vec2_scale(n12, vprime2));
+    balls->velocities[i] = vec2_add(v1_tangential, vec2_scale(n12, vprime1));
+    balls->velocities[j] = vec2_add(v2_tangential, vec2_scale(n12, vprime2));
 }
 
-static void balls_separate_overlap(Ball *b1, Ball *b2, Vec2 n12, double dist) {
+static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12, double dist) {
     assert(dist >= 0);
 
-    double min_dist = b1->radius + b2->radius;
-    double penetration = min_dist - dist;
+    const double min_dist = balls->radiuses[i] + balls->radiuses[j];
+    const double penetration = min_dist - dist;
     assert(penetration >= 0);
 
-    double inv_m1 = 1.0 / b1->mass;
-    double inv_m2 = 1.0 / b2->mass;
-    double inv_sum = inv_m1 + inv_m2;
+    const double inv_m1 = 1.0 / balls->masses[i];
+    const double inv_m2 = 1.0 / balls->masses[j];
+    const double inv_sum = inv_m1 + inv_m2;
 
     double corr_mag =
         COLLISION_PERCENT * MAX(penetration - COLLISION_SLOP, 0.0) / inv_sum;
     Vec2 correction = vec2_scale(n12, corr_mag);
 
-    b1->position = vec2_sub(b1->position, vec2_scale(correction, inv_m1));
-    b2->position = vec2_add(b2->position, vec2_scale(correction, inv_m2));
+    balls->positions[i] = vec2_sub(balls->positions[i], vec2_scale(correction, inv_m1));
+    balls->positions[j] = vec2_add(balls->positions[j], vec2_scale(correction, inv_m2));
 }
 
 static void balls_move(Balls *balls) {
