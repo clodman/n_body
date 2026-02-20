@@ -10,12 +10,13 @@ typedef unsigned int u32;
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 400,
+    BALLS_NUMBER = 420,
 };
 
 static const double G = 6.674 * 1000.0;
 static const double MAX_ACUMULATOR = 0.25;
 static const double PHYS_DT = 0.1 / (double)TARGET_FPS;
+double GRAVITATIONAL_SOFTENING = 0.1;
 static const double SIM_SPEED = 2.0;
 
 static const double COLLISION_SLOP = 0.01;
@@ -61,8 +62,8 @@ static Ball balls_ball_set(const Balls *balls, u32 i);
 static void balls_ball_get(Ball ball, Balls *balls, u32 i);
 static void balls_accelerate(Balls *balls);
 static void balls_colide(Balls *balls);
-static void balls_resolve_colition(Ball *b1, Ball *b2);
-static void balls_separate_overlap(Ball *b1, Ball *b2);
+static void balls_resolve_colition(Ball *b1, Ball *b2, Vec2 n12);
+static void balls_separate_overlap(Ball *b1, Ball *b2, Vec2 n12, double dist);
 static void balls_move(Balls *balls);
 static void balls_draw(const Balls *balls, Color color);
 static Vec2 to_screen_position(Vec2 world_position);
@@ -211,20 +212,18 @@ static void balls_accelerate(Balls *balls) {
         Ball b1 = balls_ball_set(balls, i);
 
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Ball b2 = balls_ball_set(balls, j);
 
-            Vec2 distance_vec = vec2_sub(b2.position, b1.position);
-            double distance_scalar = vec2_length(distance_vec);
+            Vec2 distance_vec = vec2_sub(balls->positions[j], b1.position);
+            double distance_scalar = vec2_length(distance_vec) + GRAVITATIONAL_SOFTENING;
 
             double inv_r3 =
                 1.0 / (distance_scalar * distance_scalar * distance_scalar);
 
-            b1.acceleration.x += G * b2.mass * inv_r3 * distance_vec.x;
-            b1.acceleration.y += G * b2.mass * inv_r3 * distance_vec.y;
+            b1.acceleration.x += G * balls->masses[j] * inv_r3 * distance_vec.x;
+            b1.acceleration.y += G * balls->masses[j] * inv_r3 * distance_vec.y;
 
-            b2.acceleration.x += -G * b1.mass * inv_r3 * distance_vec.x;
-            b2.acceleration.y += -G * b1.mass * inv_r3 * distance_vec.y;
-            balls_ball_get(b2, balls, j);
+            balls->accelerations[j].x += -G * b1.mass * inv_r3 * distance_vec.x;
+            balls->accelerations[j].y += -G * b1.mass * inv_r3 * distance_vec.y;
         }
         balls_ball_get(b1, balls, i);
     }
@@ -243,8 +242,11 @@ static void balls_colide(Balls *balls) {
             double distance_scalar2 = vec2_dot(distance_vec, distance_vec);
 
             if (distance_scalar2 <= (b1.radius + b2.radius)*(b1.radius + b2.radius)) {
-                balls_resolve_colition(&b1, &b2);
-                balls_separate_overlap(&b1, &b2);
+                Vec2 delta = vec2_sub(b2.position, b1.position);
+                double dist = vec2_length(delta);
+                Vec2 n12 = vec2_scale(delta, 1 / dist);
+                balls_resolve_colition(&b1, &b2, n12);
+                balls_separate_overlap(&b1, &b2, n12, dist);
             }
 
             balls_ball_get(b2, balls, j);
@@ -254,11 +256,10 @@ static void balls_colide(Balls *balls) {
     }
 }
 
-static void balls_resolve_colition(Ball *b1, Ball *b2) {
-    Vec2 normal12 = vec2_normalize(vec2_sub(b2->position, b1->position));
+static void balls_resolve_colition(Ball *b1, Ball *b2, Vec2 n12) {
 
-    double v1 = vec2_dot(b1->velocity, normal12);
-    double v2 = vec2_dot(b2->velocity, normal12);
+    double v1 = vec2_dot(b1->velocity, n12);
+    double v2 = vec2_dot(b2->velocity, n12);
 
     double p1 = b1->mass * v1;
     double p2 = b2->mass * v2;
@@ -273,29 +274,19 @@ static void balls_resolve_colition(Ball *b1, Ball *b2) {
     double vprime1 = (1.0 + e) * (p1 + p2) / (b1->mass + b2->mass) - e * v1;
     double vprime2 = (1.0 + e) * (p1 + p2) / (b1->mass + b2->mass) - e * v2;
 
-    Vec2 v1_tangential = vec2_sub(b1->velocity, vec2_scale(normal12, v1));
-    Vec2 v2_tangential = vec2_sub(b2->velocity, vec2_scale(normal12, v2));
+    Vec2 v1_tangential = vec2_sub(b1->velocity, vec2_scale(n12, v1));
+    Vec2 v2_tangential = vec2_sub(b2->velocity, vec2_scale(n12, v2));
 
-    b1->velocity = vec2_add(v1_tangential, vec2_scale(normal12, vprime1));
-    b2->velocity = vec2_add(v2_tangential, vec2_scale(normal12, vprime2));
+    b1->velocity = vec2_add(v1_tangential, vec2_scale(n12, vprime1));
+    b2->velocity = vec2_add(v2_tangential, vec2_scale(n12, vprime2));
 }
 
-static void balls_separate_overlap(Ball *b1, Ball *b2) {
-    Vec2 delta = vec2_sub(b2->position, b1->position);
-    double dist = vec2_length(delta);
-
-    if (!(dist > 0.0)) {
-        return;
-    }
+static void balls_separate_overlap(Ball *b1, Ball *b2, Vec2 n12, double dist) {
+    assert(dist >= 0);
 
     double min_dist = b1->radius + b2->radius;
     double penetration = min_dist - dist;
-
-    if (penetration <= 0.0) {
-        return;
-    }
-
-    Vec2 n = vec2_scale(delta, 1.0 / dist);
+    assert(penetration >= 0);
 
     double inv_m1 = 1.0 / b1->mass;
     double inv_m2 = 1.0 / b2->mass;
@@ -303,7 +294,7 @@ static void balls_separate_overlap(Ball *b1, Ball *b2) {
 
     double corr_mag =
         COLLISION_PERCENT * MAX(penetration - COLLISION_SLOP, 0.0) / inv_sum;
-    Vec2 correction = vec2_scale(n, corr_mag);
+    Vec2 correction = vec2_scale(n12, corr_mag);
 
     b1->position = vec2_sub(b1->position, vec2_scale(correction, inv_m1));
     b2->position = vec2_add(b2->position, vec2_scale(correction, inv_m2));
