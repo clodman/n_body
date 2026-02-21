@@ -4,10 +4,6 @@
 #include <stdbool.h>
 #include <time.h>
 
-// TODO: fusion
-
-typedef unsigned int u32;
-
 enum {
     TARGET_FPS = 120,
     BALLS_NUMBER = 420,

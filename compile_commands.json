@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/Users/waitman/Documents/codemann/CLANG/n-body",
-  "command": "/usr/bin/cc  -isystem /opt/homebrew/Cellar/raylib/5.5/include  -Wall -Wextra -Wpedantic -g -g -O3 -std=gnu2x -arch arm64 -I/opt/homebrew/Cellar/raylib/5.5/include -o CMakeFiles/raylib_app.dir/src/main.c.o -c /Users/waitman/Documents/codemann/CLANG/n-body/src/main.c",
-  "file": "/Users/waitman/Documents/codemann/CLANG/n-body/src/main.c",
-  "output": "CMakeFiles/raylib_app.dir/src/main.c.o"
-}
-]
