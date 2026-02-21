@@ -6,14 +6,14 @@
 
 enum {
     TARGET_FPS = 120,
-    BALLS_NUMBER = 420,
+    BALLS_NUMBER = 20,
 };
 
 static const float G = 6.674 * 1000.0;
-static const float MAX_ACUMULATOR = 0.25;
+static const float MAX_ACUMULATOR = 10;
 static const float PHYS_DT = 0.1 / TARGET_FPS;
 float GRAVITATIONAL_SOFTENING = 0.1;
-static const float SIM_SPEED = 2.0;
+static const float SIM_SPEED = 300.0;
 
 static const float COLLISION_SLOP = 0.01;
 static const float COLLISION_PERCENT = 0.8;
@@ -24,6 +24,7 @@ typedef struct {
     bool paused;
     float zoom;
     Vec2 shifting;
+    RenderTexture2D trail_texture;
 } Window;
 
 typedef struct {
@@ -50,6 +51,7 @@ static Window window = {
     .paused = false,
     .zoom = 1.0,
     .shifting = (Vec2){0.0, 0.0},
+    .trail_texture = {0},
 };
 
 static void balls_handle_input();
@@ -57,7 +59,8 @@ static Balls balls_init(void);
 static void balls_accelerate(Balls *balls);
 static void balls_colide(Balls *balls);
 static void balls_resolve_colition(Balls *balls, u32 i, u32 j, Vec2 n12);
-static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12, float dist);
+static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12,
+                                   float dist);
 static void balls_move(Balls *balls);
 static void balls_draw(const Balls *balls, Color color);
 static Vec2 to_screen_position(Vec2 world_position);
@@ -69,16 +72,29 @@ int main(void) {
     InitWindow((int)window.width, (int)window.height, "N-body??");
     SetTargetFPS(TARGET_FPS);
 
+    window.trail_texture =
+        LoadRenderTexture((int)window.width, (int)window.height);
+
     Balls balls = balls_init();
+    balls_accelerate(&balls);
+    // setup leapfrog
+    for (u32 i = 0; i < BALLS_NUMBER; ++i) {
+        balls.velocities[i].x += 0.5 * balls.accelerations[i].x * PHYS_DT;
+        balls.velocities[i].y += 0.5 * balls.accelerations[i].y * PHYS_DT;
+
+        balls.positions[i].x += balls.velocities[i].x * PHYS_DT;
+        balls.positions[i].y += balls.velocities[i].y * PHYS_DT;
+    }
+
     float acumulator = 0.0;
 
     while (!WindowShouldClose()) {
-        BeginDrawing();
-        ClearBackground(BLACK);
-
         if (IsWindowResized()) {
             window.width = (u32)GetScreenWidth();
             window.height = (u32)GetScreenHeight();
+            UnloadRenderTexture(window.trail_texture);
+            window.trail_texture =
+                LoadRenderTexture((int)window.width, (int)window.height);
         }
 
         balls_handle_input();
@@ -94,9 +110,26 @@ int main(void) {
                 acumulator -= PHYS_DT;
             }
 
+            // Draw to trail texture with fade effect
+            BeginTextureMode(window.trail_texture);
+            DrawRectangle(
+                0, 0, (int)window.width, (int)window.height,
+                (Color){0, 0, 0, 4}); 
             balls_draw(&balls, LIGHTGRAY);
-        } else {
-            balls_draw(&balls, (Color){65, 67, 67, 255});
+            EndTextureMode();
+        }
+
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        // Draw the trail texture (flipped vertically because render textures
+        // are upside down)
+        DrawTextureRec(
+            window.trail_texture.texture,
+            (Rectangle){0, 0, (float)window.width, -(float)window.height},
+            (Vector2){0, 0}, WHITE);
+
+        if (window.paused) {
             DrawText("PAUSED", (int)(window.width / 2.0 - 11.0 * 3.0),
                      (int)(window.height / 2.0 - 20.0), 20, LIGHTGRAY);
         }
@@ -107,6 +140,7 @@ int main(void) {
         EndDrawing();
     }
 
+    UnloadRenderTexture(window.trail_texture);
     CloseWindow();
     return 0;
 }
@@ -117,9 +151,11 @@ static void balls_handle_input() {
     }
     if (IsKeyPressed(KEY_W)) {
         window.zoom *= 1.5;
+        ClearBackground(BLACK);
     }
     if (IsKeyPressed(KEY_S)) {
         window.zoom /= 1.5;
+        ClearBackground(BLACK);
     }
     if (IsKeyDown(KEY_UP)) {
         window.shifting.y += 70.0 * sqrt(window.zoom);
@@ -182,7 +218,8 @@ static void balls_accelerate(Balls *balls) {
         float ay = 0.;
 
         for (u32 j = 0; j < BALLS_NUMBER; ++j) {
-            if (j == i) continue;
+            if (j == i)
+                continue;
 
             const Vec2 pj = balls->positions[j];
             const float dx = pj.x - (float)pi.x;
@@ -190,7 +227,7 @@ static void balls_accelerate(Balls *balls) {
 
             const float r2 = dx * dx + dy * dy + eps2;
 
-            const float inv_r  = 1. / sqrt(r2);
+            const float inv_r = 1. / sqrt(r2);
             const float inv_r3 = inv_r * inv_r * inv_r;
 
             const float s = G * balls->masses[j] * inv_r3;
@@ -199,7 +236,7 @@ static void balls_accelerate(Balls *balls) {
             ay += s * dy;
         }
 
-        balls->accelerations[i] = (Vec2){ ax, (float)ay };
+        balls->accelerations[i] = (Vec2){ax, (float)ay};
     }
 }
 
@@ -208,7 +245,8 @@ static void balls_colide(Balls *balls) {
 
     for (u32 i = 0; i < BALLS_NUMBER - 1; ++i) {
         for (u32 j = i + 1; j < BALLS_NUMBER; ++j) {
-            Vec2 distance_vec = vec2_sub(balls->positions[j], balls->positions[i]);
+            Vec2 distance_vec =
+                vec2_sub(balls->positions[j], balls->positions[i]);
             float distance_scalar2 = vec2_dot(distance_vec, distance_vec);
 
             float radius_sum = balls->radiuses[i] + balls->radiuses[j];
@@ -249,7 +287,8 @@ static void balls_resolve_colition(Balls *balls, u32 i, u32 j, Vec2 n12) {
     balls->velocities[j] = vec2_add(v2_tangential, vec2_scale(n12, vprime2));
 }
 
-static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12, float dist) {
+static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12,
+                                   float dist) {
     assert(dist >= 0);
 
     const float min_dist = balls->radiuses[i] + balls->radiuses[j];
@@ -264,8 +303,10 @@ static void balls_separate_overlap(Balls *balls, u32 i, u32 j, Vec2 n12, float d
         COLLISION_PERCENT * MAX(penetration - COLLISION_SLOP, 0.0) / inv_sum;
     Vec2 correction = vec2_scale(n12, corr_mag);
 
-    balls->positions[i] = vec2_sub(balls->positions[i], vec2_scale(correction, inv_m1));
-    balls->positions[j] = vec2_add(balls->positions[j], vec2_scale(correction, inv_m2));
+    balls->positions[i] =
+        vec2_sub(balls->positions[i], vec2_scale(correction, inv_m1));
+    balls->positions[j] =
+        vec2_add(balls->positions[j], vec2_scale(correction, inv_m2));
 }
 
 static void balls_move(Balls *balls) {
@@ -286,8 +327,10 @@ static void balls_draw(const Balls *balls, Color color) {
     for (u32 i = 0; i < BALLS_NUMBER; ++i) {
         Vec2 screen_p = to_screen_position(balls->positions[i]);
         float r = window.zoom * balls->radiuses[i];
-
         DrawCircle((int)screen_p.x, (int)screen_p.y, r, color);
+        if (r < 1) {
+            DrawPixel(screen_p.x, screen_p.y, color);
+        }
     }
 }
 
