@@ -36,15 +36,6 @@ typedef struct {
     float restitutions[BALLS_NUMBER];
 } Balls;
 
-typedef struct {
-    Vec2 position;
-    Vec2 velocity;
-    Vec2 acceleration;
-    float mass;
-    float radius;
-    float restitution;
-} Ball;
-
 static Window window = {
     .width = 800,
     .height = 600,
@@ -112,9 +103,8 @@ int main(void) {
 
             // Draw to trail texture with fade effect
             BeginTextureMode(window.trail_texture);
-            DrawRectangle(
-                0, 0, (int)window.width, (int)window.height,
-                (Color){0, 0, 0, 4}); 
+            DrawRectangle(0, 0, (int)window.width, (int)window.height,
+                          (Color){0, 0, 0, 4});
             balls_draw(&balls, LIGHTGRAY);
             EndTextureMode();
         }
