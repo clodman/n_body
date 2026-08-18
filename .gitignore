@@ -4,12 +4,11 @@ build/raylib_app
 .DS_Store
 .cache/
 
-# CMake generated files
+# CMake generated files (from any stale in-source build)
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 compile_commands.json
-Makefile
 
 # Build output
 raylib_app

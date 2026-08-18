@@ -18,7 +18,22 @@ set(SOURCES
 )
 add_executable(raylib_app ${SOURCES})
 
-find_package(raylib REQUIRED)
+# Use a system-installed raylib if present; otherwise download and build it.
+find_package(raylib QUIET)
+if(NOT raylib_FOUND)
+    message(STATUS "raylib not found on system, fetching it")
+    include(FetchContent)
+    set(FETCHCONTENT_QUIET OFF)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        raylib
+        GIT_REPOSITORY https://github.com/raysan5/raylib.git
+        GIT_TAG 5.5
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(raylib)
+endif()
+
 target_link_libraries(raylib_app raylib)
 
 if(APPLE)
