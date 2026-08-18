@@ -3,6 +3,13 @@
 A real-time 2D gravitational n-body simulation written in C, rendered with
 [raylib](https://www.raylib.com/).
 
+
+
+https://github.com/user-attachments/assets/1f24b0b6-9a08-45e5-a60f-ead7cdc9e18e
+https://github.com/user-attachments/assets/d366a718-609f-44e5-86a4-c3293e33d5fa
+
+
+
 Particles attract each other under Newtonian gravity, collide elastically, and
 leave fading motion trails. The simulation uses leapfrog (velocity Verlet)
 integration with a fixed physics timestep and gravitational softening for
@@ -17,6 +24,9 @@ numerical stability.
 - Pan and zoom camera, resizable window, pause
 
 ## Controls
+
+
+
 
 | Key           | Action              |
 | ------------- | ------------------- |
