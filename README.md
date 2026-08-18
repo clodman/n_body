@@ -5,11 +5,12 @@ A real-time 2D gravitational n-body simulation written in C, rendered with
 
 
 
-https://github.com/user-attachments/assets/b1f39b80-3bc6-4f8d-9321-42fdcf3f35c2
+https://github.com/user-attachments/assets/07af096d-74af-4436-89c8-cdb360cd769e
 
 
 
-https://github.com/user-attachments/assets/4dd8d48b-24e9-4d50-bc2c-3e6565445462
+https://github.com/user-attachments/assets/4a40eaf0-6060-4b15-ad54-70b3eed2ff86
+
 
 
 
