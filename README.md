@@ -4,8 +4,14 @@ A real-time 2D gravitational n-body simulation written in C, rendered with
 [raylib](https://www.raylib.com/).
 
 
-https://github.com/user-attachments/assets/b2d97432-0127-4924-9c55-39da605e3676
-https://github.com/user-attachments/assets/a7e4b0c6-5985-41ee-8582-d75f8a8e1f91
+
+https://github.com/user-attachments/assets/b1f39b80-3bc6-4f8d-9321-42fdcf3f35c2
+
+
+
+https://github.com/user-attachments/assets/4dd8d48b-24e9-4d50-bc2c-3e6565445462
+
+
 
 
 Particles attract each other under Newtonian gravity, collide elastically, and
